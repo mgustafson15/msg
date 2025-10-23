@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -13,6 +13,9 @@
             background-color: #f4f7f6;
             color: #333;
             text-align: center;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
         }
 
         h1 {
@@ -23,6 +26,8 @@
         #game-board {
             width: 500px;
             height: 500px;
+            max-width: 90vw; /* Make responsive */
+            max-height: 90vw; /* Make responsive */
             border: 2px solid #555;
             background-color: #fff;
             position: relative;
@@ -58,15 +63,11 @@
             transform: translateY(-1.5px); /* Center the line */
         }
 
-        /* The line of reflection (highlighted y-axis) */
+        /* The line of reflection (highlighted axis) */
         #reflection-line {
             position: absolute;
-            left: 50%;
-            top: 0;
-            width: 5px; /* Thicker to stand out */
-            height: 100%;
             background-color: rgba(0, 100, 255, 0.5); /* Blue, semi-transparent */
-            transform: translateX(-2.5px);
+            z-index: 5;
         }
 
         /* The point to be reflected */
@@ -78,27 +79,23 @@
             border-radius: 50%;
             border: 2px solid #fff;
             box-shadow: 0 0 5px rgba(0,0,0,0.5);
-            /* Position calculation:
-               Center is (250, 250). 1 unit = 25px.
-               Point is (4, 2).
-               left = 250px (center) + 4 * 25px = 350px
-               top = 250px (center) - 2 * 25px = 200px
-               Offset by -10px to center the 20x20 circle
-            */
-            left: 340px; /* 350 - 10 */
-            top: 190px; /* 200 - 10 */
             z-index: 10;
+            /* Centering offset */
+            transform: translate(-10px, -10px);
         }
 
         /* The label for the point */
         #point-label {
             position: absolute;
-            left: 365px; /* Just to the right of the point */
-            top: 190px;
             font-weight: bold;
             color: #d90429;
             z-index: 10;
             user-select: none;
+            background: rgba(255, 255, 255, 0.8); /* Slightly more opaque background */
+            padding: 4px 8px; /* More padding */
+            border-radius: 4px;
+            white-space: nowrap; /* Prevent label from wrapping */
+            transform: translate(0, -50%); /* Vertically center with top of point */
         }
 
         /* The feedback message */
@@ -162,44 +159,69 @@
     <button id="next-button">Next Level!</button>
 
     <script>
-        // --- Game Setup ---
+        // --- Game Elements ---
         const board = document.getElementById('game-board');
         const feedback = document.getElementById('feedback');
         const nextButton = document.getElementById('next-button');
         const instructions = document.getElementById('instructions');
-        
+        const pointEl = document.getElementById('point');
+        const pointLabelEl = document.getElementById('point-label');
+        const reflectionLineEl = document.getElementById('reflection-line');
+
         // --- Game State ---
         let currentLevel = 1;
         const scale = 25; // 1 unit = 25 pixels
-        const origin = { x: 250, y: 250 }; // Center of the 500x500 board
+        let origin = { x: 0, y: 0 }; // Will be set on load
         
         let target = { x: -4, y: 2 }; // Target for Level 1
         let originalPoint = { x: 4, y: 2 };
         let reflectionLine = 'y-axis';
 
+        // --- Utility Functions ---
+
+        // Recalculate board center on load/resize
+        function setOrigin() {
+            const rect = board.getBoundingClientRect();
+            origin.x = rect.width / 2;
+            origin.y = rect.height / 2;
+
+            // Re-position axes
+            document.getElementById('x-axis').style.top = `${origin.y - 1.5}px`;
+            document.getElementById('y-axis').style.left = `${origin.x - 1.5}px`;
+            
+            // Re-position elements for the current level
+            updateLevelVisuals();
+        }
+
+        // Convert game coordinates (e.g., -4, 2) to pixel positions
+        function gameToPixel(x, y) {
+            return {
+                left: origin.x + (x * scale),
+                top: origin.y - (y * scale)
+            };
+        }
+        
+        // Convert pixel coordinates (from click) to game coordinates
+        function pixelToGame(clickX, clickY) {
+            const rect = board.getBoundingClientRect();
+            const x = (clickX - rect.left - origin.x) / scale;
+            const y = (origin.y - (clickY - rect.top)) / scale;
+            return { x: x, y: y };
+        }
+
         // --- Game Logic ---
 
-        // Add the click listener to the board
-        board.addEventListener('click', checkClick);
-
         function checkClick(event) {
-            // Get click position relative to the board
-            const rect = board.getBoundingClientRect();
-            const clickX = event.clientX - rect.left;
-            const clickY = event.clientY - rect.top;
+            const gameCoords = pixelToGame(event.clientX, event.clientY);
 
-            // Convert pixel coordinates to game coordinates
-            const gameX = (clickX - origin.x) / scale;
-            const gameY = (origin.y - clickY) / scale;
-
-            // Check if the click is "close enough" to the target (within 0.8 units)
-            if (Math.abs(gameX - target.x) < 0.8 && Math.abs(gameY - target.y) < 0.8) {
+            // Check if the click is "close enough" (within 0.8 units)
+            if (Math.abs(gameCoords.x - target.x) < 0.8 && Math.abs(gameCoords.y - target.y) < 0.8) {
                 // --- CORRECT ---
                 feedback.textContent = `Correct! The reflected point is (${target.x}, ${target.y})`;
                 feedback.className = 'correct';
                 showCorrectAnswer(target.x, target.y);
                 nextButton.style.display = 'block'; // Show "Next Level" button
-                board.removeEventListener('click', checkClick); // Stop listening for clicks
+                board.removeEventListener('click', checkClick); // Stop listening
             } else {
                 // --- INCORRECT ---
                 feedback.textContent = 'Not quite! Try again.';
@@ -209,49 +231,83 @@
 
         // Function to place the correct answer point on the board
         function showCorrectAnswer(x, y) {
-            const pointEl = document.createElement('div');
-            pointEl.id = 'reflected-point';
-            pointEl.style.position = 'absolute';
-            pointEl.style.width = '20px';
-            pointEl.style.height = '20px';
-            pointEl.style.backgroundColor = '#28a745'; // Green for correct
-            pointEl.style.borderRadius = '50%';
-            pointEl.style.border = '2px solid #fff';
-            pointEl.style.zIndex = '9';
+            const pos = gameToPixel(x, y);
+
+            const answerEl = document.createElement('div');
+            answerEl.id = 'reflected-point';
+            answerEl.style.position = 'absolute';
+            answerEl.style.width = '20px';
+            answerEl.style.height = '20px';
+            answerEl.style.backgroundColor = '#28a745'; // Green
+            answerEl.style.borderRadius = '50%';
+            answerEl.style.border = '2px solid #fff';
+            answerEl.style.zIndex = '9';
+            answerEl.style.transform = 'translate(-10px, -10px)'; // Center the dot
+            answerEl.style.left = `${pos.left}px`;
+            answerEl.style.top = `${pos.top}px`;            
+            board.appendChild(answerEl);
             
-            // Convert game coordinates back to pixel position
-            const pixelX = origin.x + (x * scale) - 10; // -10 to center 20px div
-            const pixelY = origin.y - (y * scale) - 10;
-            
-            pointEl.style.left = `${pixelX}px`;
-            pointEl.style.top = `${pixelY}px`;
-            
-            board.appendChild(pointEl);
-            
-            // Add label
+            // Add label for the reflected point
             const labelEl = document.createElement('div');
             labelEl.id = 'reflected-label';
             labelEl.style.position = 'absolute';
-            labelEl.style.left = `${pixelX - 40}px`; // To the left of the new point
-            labelEl.style.top = `${pixelY}px`;
             labelEl.style.fontWeight = 'bold';
             labelEl.style.color = '#28a745';
+            labelEl.style.background = 'rgba(255, 255, 255, 0.8)';
+            labelEl.style.padding = '4px 8px';
+            labelEl.style.borderRadius = '4px';
+            labelEl.style.whiteSpace = 'nowrap';
+            labelEl.style.transform = 'translate(0, -50%)'; // Vertically center
             labelEl.textContent = `P'(${x}, ${y})`;
+            
+            // Position label further away
+            labelEl.style.left = `${pos.left + 25}px`; // Shift right
+            labelEl.style.top = `${pos.top}px`; // Aligned with the point's vertical center
             board.appendChild(labelEl);
         }
 
-        // --- Next Level Button ---
+        // --- Level Management ---
         nextButton.addEventListener('click', loadNextLevel);
+
+        function updateLevelVisuals() {
+            // Remove old answer points
+            document.getElementById('reflected-point')?.remove();
+            document.getElementById('reflected-label')?.remove();
+
+            // Set new point and label positions
+            const pos = gameToPixel(originalPoint.x, originalPoint.y);
+            pointEl.style.left = `${pos.left}px`;
+            pointEl.style.top = `${pos.top}px`;
+            
+            // Adjust original point label position
+            pointLabelEl.textContent = `P(${originalPoint.x}, ${originalPoint.y})`;
+            pointLabelEl.style.left = `${pos.left + 25}px`; // Further to the right
+            pointLabelEl.style.top = `${pos.top}px`; // Vertically centered
+
+            // Reset and style reflection line
+            reflectionLineEl.style.transform = 'none'; // Clear previous transforms
+            if (reflectionLine === 'y-axis') {
+                reflectionLineEl.style.left = `${origin.x - 2.5}px`;
+                reflectionLineEl.style.top = '0';
+                reflectionLineEl.style.width = '5px';
+                reflectionLineEl.style.height = '100%';
+            } else if (reflectionLine === 'x-axis') {
+                reflectionLineEl.style.left = '0';
+                reflectionLineEl.style.top = `${origin.y - 2.5}px`;
+                reflectionLineEl.style.width = '100%';
+                reflectionLineEl.style.height = '5px';
+            } else if (reflectionLine === 'y=x') {
+                reflectionLineEl.style.left = '0';
+                reflectionLineEl.style.top = '0'; // Adjusted to cover entire board for rotation
+                reflectionLineEl.style.width = '100%';
+                reflectionLineEl.style.height = '5px';
+                reflectionLineEl.style.transformOrigin = `${origin.x}px ${origin.y}px`; // Rotate around origin
+                reflectionLineEl.style.transform = 'rotate(-45deg)';
+            }
+        }
 
         function loadNextLevel() {
             currentLevel++;
-            
-            // Clear old points and labels
-            document.getElementById('reflected-point')?.remove();
-            document.getElementById('reflected-label')?.remove();
-            const point = document.getElementById('point');
-            const pointLabel = document.getElementById('point-label');
-            const reflectionLineEl = document.getElementById('reflection-line');
             
             // Reset feedback and hide button
             feedback.textContent = '';
@@ -263,58 +319,21 @@
                 originalPoint = { x: -3, y: 3 };
                 target = { x: -3, y: -3 };
                 reflectionLine = 'x-axis';
-
                 instructions.innerHTML = `<strong>Level 2:</strong> Reflect <strong>P(-3, 3)</strong> across the <strong>blue X-axis</strong>.`;
                 
-                // Move original point
-                point.style.left = `${origin.x + (originalPoint.x * scale) - 10}px`;
-                point.style.top = `${origin.y - (originalPoint.y * scale) - 10}px`;
-                
-                // Move label
-                pointLabel.textContent = `P(-3, 3)`;
-                pointLabel.style.left = `${origin.x + (originalPoint.x * scale) - 50}px`;
-                pointLabel.style.top = `${origin.y - (originalPoint.y * scale) - 10}px`;
-
-                // Move reflection line to x-axis
-                reflectionLineEl.style.left = '0';
-                reflectionLineEl.style.top = '50%';
-                reflectionLineEl.style.width = '100%';
-                reflectionLineEl.style.height = '5px';
-                reflectionLineEl.style.transform = 'translateY(-2.5px)';
-
             } else if (currentLevel === 3) {
                 // --- LEVEL 3: Reflect in y = x line ---
                 originalPoint = { x: 1, y: 4 };
                 target = { x: 4, y: 1 };
                 reflectionLine = 'y=x';
-
                 instructions.innerHTML = `<strong>Level 3:</strong> Reflect <strong>P(1, 4)</strong> across the <strong>blue line y = x</strong>.`;
-                
-                // Move original point
-                point.style.left = `${origin.x + (originalPoint.x * scale) - 10}px`;
-                point.style.top = `${origin.y - (originalPoint.y * scale) - 10}px`;
-                
-                // Move label
-                pointLabel.textContent = `P(1, 4)`;
-                pointLabel.style.left = `${origin.x + (originalPoint.x * scale) + 15}px`;
-                pointLabel.style.top = `${origin.y - (originalPoint.y * scale) - 10}px`;
 
-                // Style reflection line as y=x (a 45-degree line)
-                reflectionLineEl.style.left = '0';
-                reflectionLineEl.style.top = '0';
-                reflectionLineEl.style.width = '100%';
-                reflectionLineEl.style.height = '5px';
-                // Use CSS transform to rotate the line
-                reflectionLineEl.style.transform = 'rotate(-45deg)';
-                // Adjust position to go through origin
-                reflectionLineEl.style.transformOrigin = 'center center';
-                
             } else {
                 // --- Game Over ---
                 instructions.innerHTML = "<strong>You've completed all levels! Great job!</strong>";
                 board.style.display = 'none';
-                point.remove();
-                pointLabel.remove();
+                pointEl.remove();
+                pointLabelEl.remove();
                 reflectionLineEl.remove();
                 feedback.textContent = '🎉 You Win! 🎉';
                 feedback.className = 'correct';
@@ -323,14 +342,21 @@
                 currentLevel = 0; // Will reset to 1 on click
             }
 
-            // Re-add the click listener for the new level
+            // Update visuals for the new level
             if (currentLevel !== 0) {
-                 board.addEventListener('click', checkClick);
+                updateLevelVisuals();
+                board.addEventListener('click', checkClick); // Re-add click listener
             } else {
                 // If game is over, the button will reload the page
                 nextButton.addEventListener('click', () => location.reload(), { once: true });
             }
         }
+
+        // --- Initial Setup ---
+        window.addEventListener('load', setOrigin);
+        window.addEventListener('resize', setOrigin);
+        board.addEventListener('click', checkClick);
+
     </script>
 
 </body>
